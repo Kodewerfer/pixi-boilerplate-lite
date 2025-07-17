@@ -3,25 +3,34 @@
  */
 
 import * as PIXI from 'pixi.js';
+import '@pixi/layout';
 import PApp from './PApp.ts';
 import SSprite from './SSprite.ts';
 
+
+export type TCContainerConstructParams = PIXI.ContainerOptions<PIXI.ContainerChild> & {
+  scaleWithBaseRes?: boolean;
+}
+
+
 export default class CContainer extends PIXI.Container {
-  
   
   protected GameApp: PApp | null = null;
   
+  protected bShouldScaleWithBaseRes = false;
   
-  constructor(options?: PIXI.ContainerOptions<PIXI.ContainerChild>) {
+  constructor({ scaleWithBaseRes, ...options }: TCContainerConstructParams = {}) {
     super(options);
+    this.bShouldScaleWithBaseRes = scaleWithBaseRes || false;
+    this.notifyOnStageForNewElements();
   }
   
   
-  public isAttached(): boolean {
+  get bIsAttached(): boolean {
     return this.parent !== null;
   }
   
-  public isOnStage(): boolean {
+  get bIsOnStage(): boolean {
     return this.parent !== null && this.GameApp !== null;
   }
   
@@ -39,6 +48,18 @@ export default class CContainer extends PIXI.Container {
     
   }
   
+  /**
+   * this is to handle the situation where a new child comes in after the container was already added on the stage.
+   */
+  private notifyOnStageForNewElements() {
+    
+    this.addListener('childAdded', (child) => {
+      if (this.bIsOnStage && this.GameApp)
+        if (child instanceof CContainer || child instanceof SSprite)
+          child.onAddedToStage(this.GameApp);
+    });
+  }
+  
   public onRemovedFromStage(GameApp: PApp) {
     
     GameApp.Instance.ticker.remove(this.onTick.bind(this));
@@ -53,20 +74,39 @@ export default class CContainer extends PIXI.Container {
   
   
   protected onResize(): void {
-    // the rest are up to the subclasses
-    if (!this.isOnStage()) return;
+    if (!this.bIsOnStage) return;
+    
+    this.layout?.forceUpdate();
+    
+    if (this.bShouldScaleWithBaseRes)
+      this.reScaleWithBaseRes();
   }
   
-  protected centerContainer() {
-    
+  // calling this on resize is not a must, the decision is on the subclasses.
+  protected reScaleWithBaseRes({ minScale }: { minScale?: number } = {}) {
     if (!this.GameApp) return;
     
-    this.x = this.GameApp.Screen.width / 2;
-    this.y = this.GameApp.Screen.height / 2;
+    const { width: baseWidth, height: baseHeight } = this.GameApp.BaseResolution;
+    const { width: currentWidth, height: currentHeight } = this.GameApp.Screen;
+    
+    const baseArea = baseWidth * baseHeight;
+    const currentArea = currentWidth * currentHeight;
+    
+    // Handle division by zero and negative values
+    if (baseArea <= 0 || currentArea <= 0) {
+      this.scale.set(0, 0);
+      return;
+    }
+    
+    // Calculate uniform scale factor (square root of area ratio)
+    const scale = Math.sqrt(currentArea / baseArea);
+    
+    if (minScale && scale < minScale) return;
+    this.scale.set(scale, scale);
+    
   }
   
-  // @ts-ignore to be implemented in subclasses
   protected onTick(ticker: PIXI.Ticker): void {
-    //overridden by subclass
+    void ticker; //placeholder
   }
 }

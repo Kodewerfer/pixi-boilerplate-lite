@@ -1,27 +1,97 @@
 /**
- * Pixi Application
+ * (P)ixi (App)lication
+ * This serves as the top-most layer
+ * All business logic should be handled by other classes that piggy-back on the onTick
  */
 
 import * as PIXI from 'pixi.js';
+import '@pixi/layout';
 import EventEmitter from 'eventemitter3';
 import SSprite from './SSprite.ts';
 import CContainer from './CContainer.ts';
+import PGameMode from './PGameMode.ts';
+import PLevel from './PLevel.ts';
 
 export default class PApp extends EventEmitter {
   
   
   public static readonly EVENT_INITIALIZE_SUCCESS: string = 'INITIALIZE_SUCCESS';
   public static readonly EVENT_INITIALIZE_FAILED: string = 'INITIALIZE_FAILED';
+  public static readonly EVENT_GAMEMODE_SET: string = 'GAMEMODE_SET';
+  public static readonly EVENT_LEVEL_CHANGED: string = 'LEVEL_CHANGED';
   public static readonly EVENT_RESIZE: string = 'RESIZE';
   
   
-  private readonly _width: number;
-  private readonly _height: number;
+  private readonly _BaseResWidth: number;
+  private readonly _BaseResHeight: number;
   private readonly _Instance: PIXI.Application; //stores the instance for the running app
   private readonly _RenderTargetID: string; //the HTML ID for the scene root
   
   private _Screen: PIXI.Rectangle = new PIXI.Rectangle();// for ease of use
   
+  
+  private _CurrentLevel: PLevel | undefined | null; // only a single "level" presents at a time.
+  private _CurrentGameMode: PGameMode | undefined | null; //the "game mode" for the current level
+  
+  
+  constructor({ baseScreenWidth, baseScreenHeight, renderTargetID }: {
+    baseScreenWidth: number,
+    baseScreenHeight: number,
+    renderTargetID: string
+  }) {
+    
+    super();
+    
+    this._BaseResWidth = baseScreenWidth;
+    this._BaseResHeight = baseScreenHeight;
+    this._RenderTargetID = renderTargetID;
+    
+    this._Instance = new PIXI.Application();
+  }
+  
+  get BaseResolution() {
+    return { width: this._BaseResWidth, height: this._BaseResHeight };
+  }
+  
+  get CurrentGameMode(): PGameMode | undefined | null {
+    return this._CurrentGameMode;
+  }
+  
+  get CurrentLevel(): PLevel | undefined | null {
+    return this._CurrentLevel;
+  }
+  
+  set CurrentLevel(newLevel: PLevel | null) {
+    
+    if (this._CurrentLevel) {
+      this.removeFromStage(this._CurrentLevel.Container);
+      this._CurrentLevel.onDormant(this);
+    }
+    
+    this._CurrentLevel = newLevel;
+    
+    if (newLevel)
+      this.addToStage(newLevel.Container);
+    
+    newLevel?.onActive(this);
+    
+    this.emit(PApp.EVENT_LEVEL_CHANGED, this.CurrentLevel);
+  }
+  
+  set CurrentGameMode(gameMode: PGameMode | null) {
+    
+    if (!gameMode && this._CurrentGameMode) {
+      this._CurrentGameMode.onDormant(this);
+      this._CurrentGameMode = null;
+    }
+    
+    if (!gameMode) return;
+    
+    this._CurrentGameMode = gameMode;
+    gameMode.onActive(this);
+    
+    this.emit(PApp.EVENT_GAMEMODE_SET, this._CurrentGameMode);
+  }
   
   get Screen() {
     return this._Screen;
@@ -36,34 +106,25 @@ export default class PApp extends EventEmitter {
   }
   
   
-  constructor({ screenWidth, screenHeight, renderTargetID }: {
-    screenWidth: number,
-    screenHeight: number,
-    renderTargetID: string
-  }) {
-    
-    super();
-    
-    this._width = screenWidth;
-    this._height = screenHeight;
-    this._RenderTargetID = renderTargetID;
-    
-    this._Instance = new PIXI.Application();
-    
-  }
-  
-  
   public async Init({ bgColor = '#e57373' }: { bgColor: string }) {
     try {
-      await this.Instance.init({
-        width: this._width,
-        height: this._height,
-        backgroundColor: bgColor,
+      await this._Instance.init({
         resizeTo: window,
+        backgroundColor: bgColor,
         textureGCActive: true,
         textureGCMaxIdle: 3600,
         textureGCCheckCountMax: 1200
       });
+      
+      this._Instance.stage.label = 'Stage';
+      this._Instance.stage.scale = 1;
+      
+      this._Instance.stage.layout = {
+        width: this._Instance.screen.width,
+        height: this._Instance.screen.height,
+        overflow: 'hidden',
+        flexWrap: 'nowrap'
+      };
       
       const CanvasContainer = document.getElementById(this._RenderTargetID);
       const AppCanvas = this.Instance.canvas;
@@ -91,6 +152,13 @@ export default class PApp extends EventEmitter {
   }
   
   public resize() {
+    
+    this._Instance.stage.layout = {
+      width: window.innerWidth,
+      height: window.innerHeight
+    };
+    this._Instance.stage.layout?.forceUpdate();
+    
     this.emit(PApp.EVENT_RESIZE, this); // effectively triggers Containers/Sprites resizing
   };
   
@@ -106,10 +174,10 @@ export default class PApp extends EventEmitter {
     window.addEventListener('orientationchange', delayedResize);
   }
   
-  public addToStage(target: CContainer): any
-  public addToStage(target: SSprite): any
-  public addToStage(target: PIXI.Sprite): any
-  public addToStage(target: PIXI.Container): any {
+  public addToStage(target: CContainer): void
+  public addToStage(target: SSprite): void
+  public addToStage(target: PIXI.Sprite): void
+  public addToStage(target: PIXI.Container): void {
     
     this.Instance.stage.addChild(target);
     
@@ -119,10 +187,10 @@ export default class PApp extends EventEmitter {
     this.resize();
   };
   
-  public removeFromStage(target: CContainer): any
-  public removeFromStage(target: SSprite): any
-  public removeFromStage(target: PIXI.Sprite): any
-  public removeFromStage(target: PIXI.Container): any {
+  public removeFromStage(target: CContainer): void
+  public removeFromStage(target: SSprite): void
+  public removeFromStage(target: PIXI.Sprite): void
+  public removeFromStage(target: PIXI.Container): void {
     
     this.Instance.stage.removeChild(target);
     
@@ -133,4 +201,3 @@ export default class PApp extends EventEmitter {
   };
   
 }
-

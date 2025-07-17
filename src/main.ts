@@ -1,33 +1,59 @@
 import * as PIXI from 'pixi.js';
 import PApp from './core/PApp';
-import { getWindowDimensions } from './libs/utils.ts';
 
 import SBunnySprite from './components/SBunnySprite.ts';
 import CBunnyContainer from './components/CBunnyContainer.ts';
+import BunnyGameMode from './components/PBunnyGameMode.ts';
+import PBunnyLevel from './components/PBunnyLevel.ts';
 
 const RENDER_TARGET_ID = 'pixi-render-target';
 const APP_BG_COLOR = '#e57373';
 
-function OnInitComplete(GameApp: PApp) {
+// ---assets
+const BundleManifest = {
+  bundles: [
+    {
+      name: 'bunny-assets',
+      assets: [
+        { alias: 'bunbun', src: '/assets/bunny.png' }
+      ]
+    }
+  ]
+};
+
+async function OnInitComplete(GameApp: PApp) {
   console.info('App Initialized');
   
-  const BunnyImgURI = '/assets/bunny.png';
   
-  let bunnySprite: SBunnySprite;
+  await PIXI.Assets.init({ manifest: BundleManifest });
   
-  PIXI.Assets.load([BunnyImgURI]).then(() => {
-    
-    const container = new CBunnyContainer();
-    
-    const tBunnyTexture = PIXI.Texture.from(BunnyImgURI);
-    bunnySprite = new SBunnySprite({ texture: tBunnyTexture, baseResolution: { h: 600, w: 800 } });
-    container.addChild(bunnySprite);
-    
-    GameApp.addToStage(container);
-    
-  }).catch((error) => {
-    console.error(`Assets.load() failed. error = ${error}`);
-  });
+  
+  const bunnyGameMode = new BunnyGameMode();
+  const bunnyLevel = new PBunnyLevel({ levelID: 'Level_Bunny' });
+  
+  
+  GameApp.CurrentGameMode = bunnyGameMode;
+  GameApp.CurrentLevel = bunnyLevel;
+  
+  PIXI.Assets
+    .loadBundle('bunny-assets', (progress) => {
+      console.log(`Loading assets: ${progress * 100}%`);
+    })
+    .then((loadedResources) => {
+      
+      const bunnyContainer = new CBunnyContainer({ scaleWithBaseRes: true });
+      const bunnySprite = new SBunnySprite({ texture: loadedResources['bunbun'] });
+      bunnySprite.layout = true;
+      
+      bunnyContainer.addChild(bunnySprite);
+      
+      bunnyLevel.Container.addChild(bunnyContainer);
+      
+      
+    })
+    .catch((err) => {
+      console.log('App assets fetching error: ', err);
+    });
   
 }
 
@@ -39,10 +65,9 @@ function OnInitFailed() {
   
   try {
     
-    let { width, height } = getWindowDimensions();
     const GameApp = new PApp({
-      screenWidth: width,
-      screenHeight: height,
+      baseScreenHeight: 1080,
+      baseScreenWidth: 1920,
       renderTargetID: RENDER_TARGET_ID
     });
     

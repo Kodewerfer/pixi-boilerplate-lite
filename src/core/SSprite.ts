@@ -5,7 +5,7 @@
 import * as PIXI from 'pixi.js';
 import PApp from './PApp.ts';
 
-export type SSpriteOptions = { texture?: PIXI.Texture, baseResolution?: { w: number, h: number } }
+export type TSSpriteConstructParams = { texture?: PIXI.Texture, maxSize?: number } & PIXI.SpriteOptions
 
 export default class SSprite extends PIXI.Sprite {
   
@@ -13,19 +13,38 @@ export default class SSprite extends PIXI.Sprite {
   protected GameApp: PApp | null = null;
   
   
-  // what resolution is considered "base", affects scaling. if not set from constructor, it will use the resolution when the sprite is first loaded onto the stage.
-  private _baseScreenWidth: number | undefined;
-  private _baseScreenHeight: number | undefined;
+  protected baseWidth: number | undefined;
+  protected baseHeight: number | undefined;
+  
+  private readonly _scalingFactor: number = 1;
+  
+  private _helperText: PIXI.Text = new PIXI.Text({ text: this.label });
   
   
-  constructor({ texture, baseResolution }: SSpriteOptions) {
-    super(texture);
+  constructor({ texture, maxSize, ...otherParams }: TSSpriteConstructParams) {
+    super({
+      ...otherParams,
+      texture
+    });
     
-    if (baseResolution && baseResolution.w && baseResolution.h) {
-      this._baseScreenWidth = baseResolution.w;
-      this._baseScreenHeight = baseResolution.h;
+    this.baseWidth = texture?.width;
+    this.baseHeight = texture?.height;
+    
+    if (maxSize && this.baseWidth && this.baseHeight) {
+      this._scalingFactor = this.scale.x = this.scale.y = Math.min(maxSize / this.baseWidth, maxSize / this.baseHeight);
     }
     
+  }
+  
+  
+  public setDebugLabel(text: string) {
+    this.label = text;
+    
+    this._helperText.text = text;
+    this._helperText.anchor = 0.5;
+    
+    // will give deprecation warning
+    this.addChild(this._helperText);
   }
   
   
@@ -33,9 +52,11 @@ export default class SSprite extends PIXI.Sprite {
     return this.parent !== null;
   }
   
+  
   public isOnStage(): boolean {
     return this.parent !== null && this.GameApp !== null;
   }
+  
   
   public isTextureValid(): boolean {
     
@@ -52,11 +73,6 @@ export default class SSprite extends PIXI.Sprite {
     GameApp.Instance.ticker.add(this.onTick.bind(this));
     GameApp.addListener(PApp.EVENT_RESIZE, this.onResize.bind(this));
     
-    if (this._baseScreenWidth === undefined)
-      this._baseScreenWidth = GameApp.Screen.width;
-    if (this._baseScreenHeight === undefined)
-      this._baseScreenHeight = GameApp.Screen.height;
-    
     // Attach to App Resize
     this.GameApp.addListener(PApp.EVENT_RESIZE, this.onResize.bind(this));
   }
@@ -68,37 +84,43 @@ export default class SSprite extends PIXI.Sprite {
   
   
   protected onResize(): void {
-    
     if (!this.isOnStage() || !this.isTextureValid()) {
       return;
     }
-    // the rest are up to the subclasses
-  }
-  
-  protected reCenterSprite() {
-    
-    if (!this.GameApp) return;
-    
-    this.x = this.GameApp.Screen.width / 2;
-    this.y = this.GameApp.Screen.height / 2;
+    this.layout?.forceUpdate();
   }
   
   protected reScaleSprite() {
     
-    if (!this.GameApp || !this._baseScreenWidth || !this._baseScreenHeight) return;
+    if (!this.baseWidth || !this.baseHeight) return;
     
-    // Calculate the new width and height while maintaining the aspect ratio
-    const scaleFactorX = this.GameApp.Screen.width / this._baseScreenWidth;
-    const scaleFactorY = this.GameApp.Screen.height / this._baseScreenHeight;
-    
-    const finalScalingFactor = Math.min(scaleFactorX, scaleFactorY);
-    
-    
-    this.width = this.texture.width * finalScalingFactor;
-    this.height = this.texture.height * finalScalingFactor;
+    this.width = this.baseWidth * this._scalingFactor;
+    this.height = this.baseHeight * this._scalingFactor;
   }
   
-  // @ts-ignore to be implemented in subclasses
+  // this is not a must, the decision is on the subclasses.
+  protected reScaleWithBaseRes() {
+    if (!this.GameApp) return;
+    
+    const { width: baseWidth, height: baseHeight } = this.GameApp.BaseResolution;
+    const { width: currentWidth, height: currentHeight } = this.GameApp.Screen;
+    
+    const baseArea = baseWidth * baseHeight;
+    const currentArea = currentWidth * currentHeight;
+    
+    // Handle division by zero and negative values
+    if (baseArea <= 0 || currentArea <= 0) {
+      this.scale.set(0, 0);
+      return;
+    }
+    
+    // Calculate uniform scale factor (square root of area ratio)
+    const scale = Math.sqrt(currentArea / baseArea);
+    this.scale.set(scale, scale);
+    
+  }
+  
   protected onTick(ticker: PIXI.Ticker): void {
+    void ticker; //placeholder
   }
 }
