@@ -1,12 +1,11 @@
 import CContainer, { TCContainerConstructParams } from '../core/CContainer.ts';
 
 export default class CBunnyContainer extends CContainer {
-  
   constructor(params: TCContainerConstructParams) {
     super(params);
     this.setUpLayout();
   }
-  
+
   private setUpLayout() {
     this.layout = {
       width: '100%',
@@ -20,12 +19,11 @@ export default class CBunnyContainer extends CContainer {
       objectFit: 'contain',
       objectPosition: 'center',
       transformOrigin: 'center',
-      overflow: 'hidden'
+      overflow: 'hidden',
     };
   }
-  
+
   protected onResize() {
     super.onResize();
   }
-  
 }
